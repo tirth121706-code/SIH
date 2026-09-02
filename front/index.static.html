@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ABHAYA — Intelligent Hazard &amp; Vulnerability Assessment System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">अ</span>
+      <div class="brand-text">
+        <span class="brand-name">ABHAYA</span>
+        <span class="brand-sub">Hazard &amp; Vulnerability System</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item is-active" data-view="dashboard">
+        <span class="nav-dot"></span>Dashboard
+      </button>
+      <button class="nav-item" data-view="map">
+        <span class="nav-dot"></span>Hazard Map
+      </button>
+      <button class="nav-item" data-view="habitations">
+        <span class="nav-dot"></span>Habitations
+      </button>
+      <button class="nav-item" data-view="relocation">
+        <span class="nav-dot"></span>Relocation Priority
+      </button>
+      <button class="nav-item" data-view="about">
+        <span class="nav-dot"></span>How Scoring Works
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="status-pill"><span class="pulse"></span>Live data · demo mode</div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <main class="main">
+
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1 id="view-title">Command Dashboard</h1>
+        <p id="view-subtitle">Overview of hazard exposure and habitation vulnerability across monitored districts</p>
+      </div>
+      <div class="topbar-actions">
+        <div class="search">
+          <input type="text" placeholder="Search habitation, district, hazard type…" id="searchInput">
+        </div>
+        <button class="btn btn-outline">Export Report</button>
+        <div class="avatar">DM</div>
+      </div>
+    </header>
+
+    <!-- ===== DASHBOARD VIEW ===== -->
+    <section class="view is-active" id="view-dashboard">
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <span class="stat-label">Habitations Monitored</span>
+          <span class="stat-value">1,248</span>
+          <span class="stat-trend">across 6 districts</span>
+        </div>
+        <div class="stat-card stat-card--dark">
+          <span class="stat-label">Critical Risk Zones</span>
+          <span class="stat-value">37</span>
+          <span class="stat-trend">requires immediate review</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Population at Risk</span>
+          <span class="stat-value">86,420</span>
+          <span class="stat-trend">estimated exposed residents</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Relocation Priority List</span>
+          <span class="stat-value">12</span>
+          <span class="stat-trend">settlements flagged this cycle</span>
+        </div>
+      </div>
+
+      <div class="panel-grid">
+
+        <div class="panel panel-map">
+          <div class="panel-head">
+            <h2>Hazard Exposure Map</h2>
+            <div class="legend">
+              <span><i class="sw sw-1"></i>Low</span>
+              <span><i class="sw sw-2"></i>Moderate</span>
+              <span><i class="sw sw-3"></i>High</span>
+              <span><i class="sw sw-4"></i>Critical</span>
+            </div>
+          </div>
+          <div class="map-canvas" id="mapCanvas">
+            <div id="mapCompact" class="leaflet-map"></div>
+          </div>
+        </div>
+
+        <div class="panel panel-list">
+          <div class="panel-head">
+            <h2>Top Relocation Priorities</h2>
+          </div>
+          <ol class="priority-list">
+            <li><span class="rank">01</span><span class="name">Kotla Basti</span><span class="score">9.4</span></li>
+            <li><span class="rank">02</span><span class="name">Chandpur Colony</span><span class="score">9.1</span></li>
+            <li><span class="rank">03</span><span class="name">Rampur Nagar</span><span class="score">8.6</span></li>
+            <li><span class="rank">04</span><span class="name">Gopalpur</span><span class="score">7.9</span></li>
+            <li><span class="rank">05</span><span class="name">Sundarban Ghat</span><span class="score">6.8</span></li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="panel panel-table">
+        <div class="panel-head">
+          <h2>Habitation Risk Register</h2>
+          <div class="filters">
+            <select id="hazardFilter">
+              <option value="all">All hazard types</option>
+              <option value="flood">Flood</option>
+              <option value="landslide">Landslide</option>
+              <option value="cyclone">Cyclone</option>
+              <option value="erosion">River Erosion</option>
+            </select>
+            <select id="riskFilter">
+              <option value="all">All risk levels</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="moderate">Moderate</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+        </div>
+
+        <table class="data-table" id="riskTable">
+          <thead>
+            <tr>
+              <th>Habitation</th>
+              <th>District</th>
+              <th>Hazard Type</th>
+              <th>Population</th>
+              <th>Vulnerability Score</th>
+              <th>Risk Level</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr data-hazard="flood" data-risk="critical">
+              <td>Kotla Basti</td><td>Riverside</td><td>Flood</td><td>4,120</td>
+              <td><div class="bar"><span style="width:94%"></span></div></td>
+              <td><span class="badge badge-critical">Critical</span></td>
+            </tr>
+            <tr data-hazard="erosion" data-risk="critical">
+              <td>Chandpur Colony</td><td>Riverside</td><td>River Erosion</td><td>3,860</td>
+              <td><div class="bar"><span style="width:91%"></span></div></td>
+              <td><span class="badge badge-critical">Critical</span></td>
+            </tr>
+            <tr data-hazard="landslide" data-risk="high">
+              <td>Rampur Nagar</td><td>Hillside</td><td>Landslide</td><td>2,910</td>
+              <td><div class="bar"><span style="width:86%"></span></div></td>
+              <td><span class="badge badge-high">High</span></td>
+            </tr>
+            <tr data-hazard="cyclone" data-risk="high">
+              <td>Gopalpur</td><td>Coastal</td><td>Cyclone</td><td>5,430</td>
+              <td><div class="bar"><span style="width:79%"></span></div></td>
+              <td><span class="badge badge-high">High</span></td>
+            </tr>
+            <tr data-hazard="flood" data-risk="moderate">
+              <td>Sundarban Ghat</td><td>Riverside</td><td>Flood</td><td>1,780</td>
+              <td><div class="bar"><span style="width:68%"></span></div></td>
+              <td><span class="badge badge-moderate">Moderate</span></td>
+            </tr>
+            <tr data-hazard="cyclone" data-risk="low">
+              <td>Vasant Vihar</td><td>Coastal</td><td>Cyclone</td><td>960</td>
+              <td><div class="bar"><span style="width:31%"></span></div></td>
+              <td><span class="badge badge-low">Low</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== MAP VIEW ===== -->
+    <section class="view" id="view-map">
+      <div class="panel panel-full">
+        <div class="panel-head">
+          <h2>Hazard Map — Full View</h2>
+          <div class="legend">
+            <span><i class="sw sw-1"></i>Low</span>
+            <span><i class="sw sw-2"></i>Moderate</span>
+            <span><i class="sw sw-3"></i>High</span>
+            <span><i class="sw sw-4"></i>Critical</span>
+          </div>
+        </div>
+        <div class="map-canvas map-canvas--tall">
+          <div id="mapFull" class="leaflet-map"></div>
+        </div>
+        <p class="hint">Live map of India (OpenStreetMap data via CARTO's grayscale basemap) — markers are colour-weighted by risk intensity (dark = critical) and sit at each habitation's real coordinates. In production these coordinates and risk values are pulled live from PostGIS instead of the demo dataset in script.js.</p>
+      </div>
+    </section>
+
+    <!-- ===== HABITATIONS VIEW ===== -->
+    <section class="view" id="view-habitations">
+      <div class="panel panel-full">
+        <div class="panel-head"><h2>All Habitations</h2></div>
+        <table class="data-table">
+          <thead><tr><th>Habitation</th><th>District</th><th>Population</th><th>Households</th><th>Nearest Hazard</th><th>Carrying Capacity</th></tr></thead>
+          <tbody>
+            <tr><td>Kotla Basti</td><td>Riverside</td><td>4,120</td><td>812</td><td>Flood plain — 0.4 km</td><td>Exceeded</td></tr>
+            <tr><td>Chandpur Colony</td><td>Riverside</td><td>3,860</td><td>765</td><td>Eroding bank — 0.2 km</td><td>Exceeded</td></tr>
+            <tr><td>Rampur Nagar</td><td>Hillside</td><td>2,910</td><td>540</td><td>Slope &gt;30° — 0.6 km</td><td>Near limit</td></tr>
+            <tr><td>Gopalpur</td><td>Coastal</td><td>5,430</td><td>1,120</td><td>Storm surge zone — 1.1 km</td><td>Near limit</td></tr>
+            <tr><td>Sundarban Ghat</td><td>Riverside</td><td>1,780</td><td>349</td><td>Flood plain — 1.8 km</td><td>Within limit</td></tr>
+            <tr><td>Vasant Vihar</td><td>Coastal</td><td>960</td><td>201</td><td>Storm surge zone — 3.2 km</td><td>Within limit</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== RELOCATION VIEW ===== -->
+    <section class="view" id="view-relocation">
+      <div class="panel panel-full">
+        <div class="panel-head"><h2>Relocation Priority Ranking</h2></div>
+        <ol class="priority-list priority-list--wide">
+          <li><span class="rank">01</span><span class="name">Kotla Basti — Riverside</span><span class="score">9.4</span></li>
+          <li><span class="rank">02</span><span class="name">Chandpur Colony — Riverside</span><span class="score">9.1</span></li>
+          <li><span class="rank">03</span><span class="name">Rampur Nagar — Hillside</span><span class="score">8.6</span></li>
+          <li><span class="rank">04</span><span class="name">Gopalpur — Coastal</span><span class="score">7.9</span></li>
+          <li><span class="rank">05</span><span class="name">Sundarban Ghat — Riverside</span><span class="score">6.8</span></li>
+          <li><span class="rank">06</span><span class="name">Vasant Vihar — Coastal</span><span class="score">3.2</span></li>
+        </ol>
+        <p class="hint">Ranking = weighted combination of hazard probability, exposure, vulnerability and carrying-capacity overshoot. See "How Scoring Works" for the formula.</p>
+      </div>
+    </section>
+
+    <!-- ===== ABOUT / SCORING VIEW ===== -->
+    <section class="view" id="view-about">
+      <div class="panel panel-full panel-about">
+        <div class="panel-head"><h2>How the Risk &amp; Vulnerability Score Works</h2></div>
+
+        <div class="about-grid">
+          <div class="about-card">
+            <span class="about-step">01</span>
+            <h3>Hazard Layer</h3>
+            <p>Flood, landslide, cyclone and erosion probability surfaces are derived from historical events, terrain slope, rainfall and drainage data.</p>
+          </div>
+          <div class="about-card">
+            <span class="about-step">02</span>
+            <h3>Exposure Layer</h3>
+            <p>Habitation boundaries and population counts are overlaid on hazard surfaces to measure how many people and assets sit inside each hazard zone.</p>
+          </div>
+          <div class="about-card">
+            <span class="about-step">03</span>
+            <h3>Vulnerability Layer</h3>
+            <p>Housing quality, access to infrastructure and socio-economic indicators adjust the raw exposure into a vulnerability index per habitation.</p>
+          </div>
+          <div class="about-card">
+            <span class="about-step">04</span>
+            <h3>Carrying Capacity</h3>
+            <p>Land stability and resource limits are compared against current population to flag habitations that have exceeded a safe carrying capacity.</p>
+          </div>
+        </div>
+
+        <div class="formula-box">
+          <span class="formula-label">Composite Risk Score</span>
+          <code>R = (H × 0.35) + (E × 0.25) + (V × 0.25) + (C × 0.15)</code>
+          <p>H = Hazard probability · E = Exposure · V = Vulnerability index · C = Carrying-capacity overshoot — each normalised 0–10. Weights are configurable per disaster type.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="js/script.js"></script>
+</body>
+</html>
