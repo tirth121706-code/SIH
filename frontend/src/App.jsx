@@ -266,6 +266,20 @@ const FACILITY_THEMES = {
   'Medic Post': { color: '#0891b2', icon: '⚕️', badgeBg: '#ecfeff', badgeColor: '#0e7490' }
 };
 
+// Map string hazards to appropriate dynamic emojis
+const getHazardConfig = (type = '') => {
+  const lower = type.toLowerCase();
+  if (lower.includes('wildfire') || lower.includes('fire')) return '🔥';
+  if (lower.includes('landslide')) return '⛰️';
+  if (lower.includes('cyclone')) return '🌪️';
+  if (lower.includes('earthquake')) return '🌍';
+  if (lower.includes('tsunami')) return '🌊';
+  if (lower.includes('lightning') || lower.includes('storm')) return '⚡';
+  if (lower.includes('heat')) return '☀️';
+  if (lower.includes('flood') || lower.includes('erosion')) return '🌊';
+  return '⚠️'; // Default Warning
+};
+
 function getDistanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -355,7 +369,6 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
       let durationMins = 0;
       let isWaterwayTransit = false;
 
-      // 1. Direct OSRM call (No invalid API keys, avoids 404/401 red console errors)
       try {
         const osrmRes = await fetch(
           `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destCoords[1]},${destCoords[0]}?overview=full&geometries=geojson`,
@@ -375,27 +388,26 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
         // Silently caught if request was aborted
       }
 
-      // 2. Island / Delta Fallback: If no direct road bridge exists (e.g. Sundarbans tidal channels)
       if (coords.length === 0) {
         coords = [
           [startLat, startLng],
           [destCoords[0], destCoords[1]]
         ];
         distanceKm = getDistanceKm(startLat, startLng, destCoords[0], destCoords[1]).toFixed(1);
-        durationMins = Math.round((distanceKm / 20) * 60); // Boat / ferry estimated crossing time
+        durationMins = Math.round((distanceKm / 20) * 60); 
         isWaterwayTransit = true;
       }
 
       if (coords.length > 0) {
         if (routeLayerRef.current) routeLayerRef.current.clearLayers();
 
-        // Google Maps Clean Dual-Layer Path (Deep border + vibrant solid core)
         const routeOutline = window.L.polyline(coords, {
           color: isWaterwayTransit ? '#0284c7' : '#1a73e8',
           weight: 8,
           opacity: 0.9,
           lineCap: 'round',
-          lineJoin: 'round'
+          lineJoin: 'round',
+          dashArray: isWaterwayTransit ? '8, 8' : undefined
         });
 
         const routeCore = window.L.polyline(coords, {
@@ -403,7 +415,8 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
           weight: 5,
           opacity: 1.0,
           lineCap: 'round',
-          lineJoin: 'round'
+          lineJoin: 'round',
+          dashArray: isWaterwayTransit ? '8, 8' : undefined
         });
 
         routeLayerRef.current.addLayer(routeOutline);
@@ -566,7 +579,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
     return () => window.removeEventListener('focus-sos-beacon', handleFocus);
   }, [findNearestFacility, drawRouteToFacility]);
 
-  // Habitations Markers
+  // Habitations Markers (Calamities)
   useEffect(() => {
     if (!habitationsLayerRef.current || !window.L) return;
     habitationsLayerRef.current.clearLayers();
@@ -574,16 +587,20 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
     habitations.forEach(hab => {
       const coords = HABITATION_COORDS[hab.name] || [21.0, 78.0];
       const isCrit = hab.riskLevel === 'Critical';
+      const hazardEmoji = getHazardConfig(hab.hazardType);
 
-      const iconHtml = `<div class="${isCrit ? 'marker-critical animate-pulse-crit' : 'marker-high'}"></div>`;
+      // Create visually distinct bouncing emoji markers
+      const iconHtml = `<div class="marker-hazard ${isCrit ? 'critical' : 'high'}">${hazardEmoji}</div>`;
+      
       const marker = window.L.marker(coords, {
-        icon: window.L.divIcon({ className: 'custom-div-icon', html: iconHtml, iconSize: [20, 20], iconAnchor: [10, 10] })
+        icon: window.L.divIcon({ className: 'custom-div-icon', html: iconHtml, iconSize: [36, 36], iconAnchor: [18, 18] }),
+        zIndexOffset: isCrit ? 1100 : 1000 // Always render above Facilities
       });
 
       let popupContent = `
         <div style="font-family: inherit; min-width: 200px; padding: 2px;">
           <h4 style="margin: 0 0 4px 0; font-size: 13px; font-weight: 700;">${hab.name}</h4>
-          <p style="margin: 0 0 2px; font-size: 11px;"><strong>Zone:</strong> ${hab.district} (${hab.hazardType})</p>
+          <p style="margin: 0 0 2px; font-size: 11px;"><strong>Zone:</strong> ${hab.district} (${hab.hazardType} ${hazardEmoji})</p>
           <p style="margin: 0 0 6px; font-size: 11px;"><strong>Risk:</strong> <span style="color:${isCrit ? '#dc2626' : '#f97316'}; font-weight:700;">${hab.riskLevel}</span></p>
       `;
 
@@ -657,7 +674,8 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
       const facIconHtml = `<div class="marker-facility" style="background-color: ${theme.color};">${theme.icon}</div>`;
 
       const facMarker = window.L.marker(fac.coords, {
-        icon: window.L.divIcon({ className: 'custom-div-icon', html: facIconHtml, iconSize: [26, 26], iconAnchor: [13, 13] })
+        icon: window.L.divIcon({ className: 'custom-div-icon', html: facIconHtml, iconSize: [26, 26], iconAnchor: [13, 13] }),
+        zIndexOffset: 10 // Keep lower than calamities and SOS
       });
 
       facMarker.bindPopup(`
@@ -702,7 +720,8 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
       `;
 
       const sosMarker = window.L.marker(sos.coords, {
-        icon: window.L.divIcon({ className: 'custom-div-icon', html: sosIconHtml, iconSize: [28, 28], iconAnchor: [14, 14] })
+        icon: window.L.divIcon({ className: 'custom-div-icon', html: sosIconHtml, iconSize: [28, 28], iconAnchor: [14, 14] }),
+        zIndexOffset: 2000 // Ensure SOS beacons are ALWAYS on top of everything
       });
 
       sosMarker.bindPopup(`
@@ -755,19 +774,45 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
       <style>{`
-        .marker-critical { background-color: #dc2626; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; }
-        .animate-pulse-crit { animation: pulse-crit 1.5s infinite; }
-        @keyframes pulse-crit {
-          0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); }
-          70% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0); }
-          100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+        /* --- Dynamic Calamity Emoji Markers --- */
+        .marker-hazard {
+          display: flex; align-items: center; justify-content: center;
+          width: 36px; height: 36px; border-radius: 50%;
+          background: #ffffff;
+          font-size: 18px;
+          border: 3px solid;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+          cursor: pointer;
         }
-        .marker-high { background-color: #f97316; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; }
+        .marker-hazard.critical {
+          border-color: #dc2626;
+          animation: pulse-crit-hazard 1.2s infinite;
+        }
+        .marker-hazard.high {
+          border-color: #f97316;
+          animation: pulse-high-hazard 2s infinite;
+        }
+        @keyframes pulse-crit-hazard {
+          0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); transform: scale(0.95) translateY(0); }
+          50% { transform: scale(1.1) translateY(-4px); }
+          70% { box-shadow: 0 0 0 16px rgba(220, 38, 38, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); transform: scale(0.95) translateY(0); }
+        }
+        @keyframes pulse-high-hazard {
+          0% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7); transform: scale(0.95) translateY(0); }
+          50% { transform: scale(1.05) translateY(-2px); }
+          70% { box-shadow: 0 0 0 12px rgba(249, 115, 22, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); transform: scale(0.95) translateY(0); }
+        }
+
+        /* --- Standard Facilities --- */
         .marker-facility {
           display: flex; align-items: center; justify-content: center;
           width: 26px; height: 26px; border-radius: 50%; border: 2px solid white;
           color: white; font-size: 13px; box-shadow: 0 3px 6px rgba(0,0,0,0.3);
         }
+        
+        /* --- SOS Distress Beacons --- */
         .marker-sos-beacon {
           display: flex; align-items: center; justify-content: center;
           width: 28px; height: 28px; border-radius: 50%; background: #ef4444;
@@ -1125,8 +1170,14 @@ export default function App() {
                 <div className="panel-head">
                   <h2>Hazard Exposure Zones</h2>
                   <div className="legend">
-                    <span><i className="sw sw-4"></i>Critical (Pulsing)</span>
-                    <span><i className="sw sw-3"></i>High Risk</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid #dc2626', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>⚠️</div>
+                      Critical Risk
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '18px', height: '18px', borderRadius: '50%', border: '2px solid #f97316', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' }}>⚠️</div>
+                      High Risk
+                    </span>
                   </div>
                 </div>
                 <div style={{ height: '360px', width: '100%', borderRadius: '8px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
@@ -1150,10 +1201,14 @@ export default function App() {
                 <div className="filters">
                   <select value={hazardFilter} onChange={e => setHazardFilter(e.target.value)}>
                     <option value="all">All hazard types</option>
-                    <option value="flood">Flood</option>
-                    <option value="landslide">Landslide</option>
-                    <option value="cyclone">Cyclone</option>
-                    <option value="erosion">River Erosion</option>
+                    <option value="flood">🌊 Flood</option>
+                    <option value="wildfire">🔥 Wildfire</option>
+                    <option value="landslide">⛰️ Landslide</option>
+                    <option value="cyclone">🌪️ Cyclone</option>
+                    <option value="earthquake">🌍 Earthquake</option>
+                    <option value="tsunami">🌊 Tsunami</option>
+                    <option value="lightning">⚡ Lightning/Storm</option>
+                    <option value="heat">☀️ Extreme heat</option>
                   </select>
                   <select value={riskFilter} onChange={e => setRiskFilter(e.target.value)}>
                     <option value="all">All risk levels</option>
@@ -1380,11 +1435,14 @@ export default function App() {
                   onChange={e => setVictimCalamity(e.target.value)}
                   style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', fontWeight: 600 }}
                 >
-                  <option value="Flood">🌊 Flood / Inundation</option>
-                  <option value="Heavy Rain">🌧️ Heavy Torrential Rain</option>
-                  <option value="Heatwave (Loo)">☀️ Extreme Heatwave / Severe Loo</option>
-                  <option value="Earthquake">🏚️ Earthquake Tremors</option>
-                  <option value="Cyclone / Tsunami">🌪️ Cyclone / Coastal Surge</option>
+                  <option value="Flood">🌊 Flood</option>
+                  <option value="Wildfire">🔥 Wildfire</option>
+                  <option value="Landslide">⛰️ Landslide</option>
+                  <option value="Cyclone">🌪️ Cyclone</option>
+                  <option value="Earthquake">🌍 Earthquake</option>
+                  <option value="Tsunami">🌊 Tsunami</option>
+                  <option value="Lightning/Storm">⚡ Lightning/Storm</option>
+                  <option value="Extreme heat">☀️ Extreme heat</option>
                 </select>
               </div>
 
