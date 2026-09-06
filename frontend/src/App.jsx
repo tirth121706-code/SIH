@@ -291,18 +291,12 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
   const [mapStyle, setMapStyle] = useState('streets');
   const [routeInfo, setRouteInfo] = useState(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
-  const [isHeatwaveMode, setIsHeatwaveMode] = useState(false);
 
   const activeFacilityFilterRef = useRef(activeFacilityFilter);
-  const isHeatwaveModeRef = useRef(isHeatwaveMode);
 
   useEffect(() => {
     activeFacilityFilterRef.current = activeFacilityFilter;
   }, [activeFacilityFilter]);
-
-  useEffect(() => {
-    isHeatwaveModeRef.current = isHeatwaveMode;
-  }, [isHeatwaveMode]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !window.L) return;
@@ -346,7 +340,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
     return { facility: nearest, distanceKm: minDist.toFixed(1) };
   }, [facilities]);
 
-  const drawRouteToFacility = useCallback(async (startLat, startLng, destCoords, label, category, isGreenPath = false) => {
+  const drawRouteToFacility = useCallback(async (startLat, startLng, destCoords, label, category) => {
     const map = mapInstanceRef.current;
     if (!map || !window.L) return;
 
@@ -361,57 +355,59 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
       let distanceKm = 0;
       let durationMins = 0;
 
-      const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': ORS_API_KEY
-        },
-        body: JSON.stringify({
-          coordinates: [
-            [startLng, startLat],
-            [destCoords[1], destCoords[0]]
-          ]
-        }),
-        signal: abortControllerRef.current.signal
-      });
+      // Primary: OpenRouteService
+      try {
+        const orsRes = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': ORS_API_KEY
+          },
+          body: JSON.stringify({
+            coordinates: [
+              [startLng, startLat],
+              [destCoords[1], destCoords[0]]
+            ]
+          }),
+          signal: abortControllerRef.current.signal
+        });
 
-      if (orsRes.ok) {
-        const data = await orsRes.json();
-        const feature = data.features?.[0];
-        coords = feature.geometry.coordinates.map(c => [c[1], c[0]]);
-        distanceKm = (feature.properties.summary.distance / 1000).toFixed(1);
-        durationMins = Math.round(feature.properties.summary.duration / 60);
-      } else {
+        if (orsRes.ok) {
+          const data = await orsRes.json();
+          const feature = data.features?.[0];
+          coords = feature.geometry.coordinates.map(c => [c[1], c[0]]);
+          distanceKm = (feature.properties.summary.distance / 1000).toFixed(1);
+          durationMins = Math.round(feature.properties.summary.duration / 60);
+        }
+      } catch (e) {
+        // Fallback to OSRM
+      }
+
+      // Fallback: Public OSRM
+      if (coords.length === 0) {
         const osrmRes = await fetch(
           `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destCoords[1]},${destCoords[0]}?overview=full&geometries=geojson`,
           { signal: abortControllerRef.current.signal }
         );
         const osrmData = await osrmRes.json();
         const route = osrmData.routes?.[0];
-        coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
-        distanceKm = (route.distance / 1000).toFixed(1);
-        durationMins = Math.round(route.duration / 60);
+        if (route) {
+          coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+          distanceKm = (route.distance / 1000).toFixed(1);
+          durationMins = Math.round(route.duration / 60);
+        }
       }
 
       if (coords.length > 0) {
         if (routeLayerRef.current) routeLayerRef.current.clearLayers();
 
-        if (isGreenPath) {
-          coords = coords.map(([lat, lng], index) => {
-            if (index > 0 && index < coords.length - 1 && index % 2 === 0) {
-              return [lat + 0.0012, lng + 0.0015];
-            }
-            return [lat, lng];
-          });
-        }
-
         const routePolyline = window.L.polyline(coords, {
-          color: isGreenPath ? '#10b981' : (FACILITY_THEMES[category]?.color || '#2563eb'),
+          color: FACILITY_THEMES[category]?.color || '#2563eb',
           weight: 6,
           opacity: 0.95,
-          dashArray: isGreenPath ? '6, 6' : '10, 10',
-          lineCap: 'round'
+          dashArray: '10, 10',
+          lineCap: 'round',
+          lineJoin: 'round'
         });
 
         routeLayerRef.current.addLayer(routePolyline);
@@ -419,11 +415,10 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
 
         setRouteInfo({
           targetName: label,
-          category: isGreenPath ? '🌿 Tree-Canopy Safe Path' : (category || 'Evacuation Route'),
+          category: category || 'Evacuation Route',
           distance: distanceKm,
-          duration: durationMins + (isGreenPath ? 3 : 0),
-          contact: '1070 / 108',
-          isGreen: isGreenPath
+          duration: durationMins,
+          contact: '1070 / 108'
         });
       }
     } catch (err) {
@@ -452,7 +447,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
 
     const res = findNearestFacility(lat, lng, activeFacilityFilterRef.current);
     if (res?.facility) {
-      drawRouteToFacility(lat, lng, res.facility.coords, res.facility.name, res.facility.category, isHeatwaveModeRef.current);
+      drawRouteToFacility(lat, lng, res.facility.coords, res.facility.name, res.facility.category);
     }
   }, [findNearestFacility, drawRouteToFacility]);
 
@@ -565,14 +560,14 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
       
       const nearestHaven = findNearestFacility(sos.coords[0], sos.coords[1], 'Hospital');
       const baseCoords = nearestHaven ? nearestHaven.facility.coords : [22.3072, 73.1812];
-      drawRouteToFacility(baseCoords[0], baseCoords[1], sos.coords, `Dispatch to ${sos.victimName}`, 'Hospital', false);
+      drawRouteToFacility(baseCoords[0], baseCoords[1], sos.coords, `Dispatch to ${sos.victimName}`, 'Hospital');
     };
 
     window.addEventListener('focus-sos-beacon', handleFocus);
     return () => window.removeEventListener('focus-sos-beacon', handleFocus);
   }, [findNearestFacility, drawRouteToFacility]);
 
-  // Habitations Markers (with Shelter, Hospital, AND Clinic options)
+  // Habitations Markers
   useEffect(() => {
     if (!habitationsLayerRef.current || !window.L) return;
     habitationsLayerRef.current.clearLayers();
@@ -622,7 +617,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
             btnShelter.onclick = () => {
               const res = findNearestFacility(coords[0], coords[1], 'Relocation Center');
               if (res?.facility) {
-                drawRouteToFacility(coords[0], coords[1], res.facility.coords, res.facility.name, res.facility.category, isHeatwaveModeRef.current);
+                drawRouteToFacility(coords[0], coords[1], res.facility.coords, res.facility.name, res.facility.category);
               }
             };
           }
@@ -630,7 +625,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
             btnHosp.onclick = () => {
               const res = findNearestFacility(coords[0], coords[1], 'Hospital');
               if (res?.facility) {
-                drawRouteToFacility(coords[0], coords[1], res.facility.coords, res.facility.name, res.facility.category, isHeatwaveModeRef.current);
+                drawRouteToFacility(coords[0], coords[1], res.facility.coords, res.facility.name, res.facility.category);
               }
             };
           }
@@ -638,7 +633,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
             btnClinic.onclick = () => {
               const res = findNearestFacility(coords[0], coords[1], 'Medic Post');
               if (res?.facility) {
-                drawRouteToFacility(coords[0], coords[1], res.facility.coords, res.facility.name, res.facility.category, isHeatwaveModeRef.current);
+                drawRouteToFacility(coords[0], coords[1], res.facility.coords, res.facility.name, res.facility.category);
               }
             };
           }
@@ -649,7 +644,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
     });
   }, [habitations, isFull, findNearestFacility, drawRouteToFacility]);
 
-  // Render Nationwide Facilities from DB
+  // Facilities Markers
   useEffect(() => {
     if (!facilitiesLayerRef.current || !window.L || !isFull) return;
     facilitiesLayerRef.current.clearLayers();
@@ -685,7 +680,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
         if (btn) {
           btn.onclick = () => {
             const userLatLng = userMarkerRef.current ? userMarkerRef.current.getLatLng() : { lat: fac.coords[0] - 0.04, lng: fac.coords[1] - 0.04 };
-            drawRouteToFacility(userLatLng.lat, userLatLng.lng, fac.coords, fac.name, fac.category, isHeatwaveModeRef.current);
+            drawRouteToFacility(userLatLng.lat, userLatLng.lng, fac.coords, fac.name, fac.category);
           };
         }
       });
@@ -694,7 +689,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
     });
   }, [facilities, activeFacilityFilter, isFull, drawRouteToFacility]);
 
-  // Render SOS Distress Pins
+  // SOS Distress Pins
   useEffect(() => {
     if (!sosLayerRef.current || !window.L || !isFull) return;
     sosLayerRef.current.clearLayers();
@@ -734,7 +729,7 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
           btn.onclick = () => {
             const nearestBase = findNearestFacility(sos.coords[0], sos.coords[1], 'Hospital');
             const origin = nearestBase ? nearestBase.facility.coords : [22.3072, 73.1812];
-            drawRouteToFacility(origin[0], origin[1], sos.coords, `Victim: ${sos.victimName}`, 'Hospital', false);
+            drawRouteToFacility(origin[0], origin[1], sos.coords, `Victim: ${sos.victimName}`, 'Hospital');
           };
         }
       });
@@ -826,25 +821,6 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
               <option value="streets">🗺️ OpenStreetMap Streets</option>
               <option value="satellite">🛰️ Public Satellite (Esri)</option>
             </select>
-
-            <button
-              onClick={() => setIsHeatwaveMode(!isHeatwaveMode)}
-              style={{
-                background: isHeatwaveMode ? '#10b981' : '#ffffff',
-                color: isHeatwaveMode ? '#ffffff' : '#047857',
-                border: '1px solid #10b981',
-                padding: '6px 12px',
-                fontSize: '12px',
-                fontWeight: 700,
-                borderRadius: '6px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px'
-              }}
-            >
-              🌿 {isHeatwaveMode ? 'Heatwave Tree-Shade ON' : 'Enable Shaded Green Way (Loo)'}
-            </button>
           </div>
 
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -859,10 +835,10 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
           <div style={{
             position: 'absolute', bottom: 12, left: 12, zIndex: 1000, background: '#ffffff',
             padding: '12px 16px', borderRadius: '6px', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
-            borderLeft: `5px solid ${routeInfo.isGreen ? '#10b981' : '#2563eb'}`, maxWidth: '290px'
+            borderLeft: `5px solid ${FACILITY_THEMES[routeInfo.category]?.color || '#2563eb'}`, maxWidth: '290px'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 800, color: routeInfo.isGreen ? '#047857' : '#1d4ed8', textTransform: 'uppercase', fontSize: '10px' }}>
+              <span style={{ fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', fontSize: '10px' }}>
                 {routeInfo.category}
               </span>
               <button onClick={() => { setRouteInfo(null); if (routeLayerRef.current) routeLayerRef.current.clearLayers(); }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontWeight: 700, fontSize: '14px' }}>✕</button>
@@ -872,11 +848,6 @@ function HazardMap({ habitations, sosRequests, facilities = INITIAL_FACILITIES, 
               <span><strong>Dist:</strong> {routeInfo.distance} km</span>
               <span><strong>Est:</strong> {routeInfo.duration} mins</span>
             </div>
-            {routeInfo.isGreen && (
-              <p style={{ margin: '3px 0', fontSize: '11px', color: '#047857', fontWeight: 600 }}>
-                ✓ 42% Lower Solar Exposure (Tree Shaded Path)
-              </p>
-            )}
             <p style={{ margin: '3px 0 0 0', color: '#b91c1c', fontWeight: 700, fontSize: '12px' }}>Control Helpline: {routeInfo.contact}</p>
           </div>
         )}
@@ -987,7 +958,6 @@ export default function App() {
       });
       if (!res.ok) throw new Error('Delete failed');
 
-      // Optimistically remove from frontend list
       setSosRequests(prev => prev.filter(item => (item._id || item.id) !== sosId));
     } catch (err) {
       console.error(err);
@@ -1216,13 +1186,12 @@ export default function App() {
           <section className="view is-active" id="view-map">
             <div className="panel panel-full" style={{ paddingBottom: '16px' }}>
               <div className="panel-head">
-                <h2>Emergency Safe Havens, SOS Distress Beacons &amp; Shaded Paths</h2>
+                <h2>Emergency Safe Havens &amp; SOS Distress Beacons</h2>
                 <div className="legend">
                   <span><i className="sw" style={{ background: '#ef4444' }}></i>🚨 Victim SOS</span>
                   <span><i className="sw" style={{ background: '#059669' }}></i>🛡️ Shelter</span>
                   <span><i className="sw" style={{ background: '#2563eb' }}></i>🏥 Hospital</span>
                   <span><i className="sw" style={{ background: '#0891b2' }}></i>⚕️ Clinic</span>
-                  <span><i className="sw" style={{ background: '#10b981' }}></i>🌿 Green Canopy Path</span>
                 </div>
               </div>
               

@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const HabitationSchema = new mongoose.Schema({
   name: String,
@@ -9,7 +9,7 @@ const HabitationSchema = new mongoose.Schema({
   hazardDistance: String,
   carryingCapacityStatus: String,
   vulnerabilityScore: Number,
-  riskLevel: String
+  riskLevel: String,
 });
 
-module.exports = mongoose.model('Habitation', HabitationSchema);
+module.exports = mongoose.model("Habitation", HabitationSchema);
