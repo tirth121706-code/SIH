@@ -7,6 +7,9 @@ const connectDB = require("./config/db");
 const habitationRoutes = require("./routes/habitations");
 const sosRoutes = require("./routes/sos");
 const facilityRoutes = require("./routes/facilities");
+const dashboardRoutes = require("./routes/dashboard");
+const rescueUnitRoutes = require("./routes/rescueUnits");
+const reliefDepotRoutes = require("./routes/reliefDepots");
 
 const app = express();
 
@@ -25,6 +28,9 @@ app.get("/api/health", (req, res) => {
 app.use("/api/habitations", habitationRoutes);
 app.use("/api/sos", sosRoutes);
 app.use("/api/facilities", facilityRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/rescue-units", rescueUnitRoutes);
+app.use("/api/relief-depots", reliefDepotRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });

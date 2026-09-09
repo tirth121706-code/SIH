@@ -5,7 +5,7 @@ const FacilitySchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     category: {
       type: String,
-      enum: ["Hospital", "Relocation Center", "Medic Post"],
+      enum: ["Hospital", "Relocation Center", "Medic Post", "Rescue Unit", "Relief Depot"],
       required: true,
     },
     coords: {
@@ -21,6 +21,10 @@ const FacilitySchema = new mongoose.Schema(
     contact: { type: String, default: "" },
     doctorCount: { type: Number, default: 0 },
     bedsAvailable: { type: Number, default: 0 },
+    assignedHabitation: { type: String, default: "" },
+    equipment: { type: mongoose.Schema.Types.Mixed, default: {} },
+    supplies: { type: mongoose.Schema.Types.Mixed, default: {} },
+    isSeeded: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
